@@ -38,7 +38,7 @@ add_executable(${CMAKE_PROJECT_NAME})
 add_subdirectory(cmake/stm32cubemx)
 
 # 设置 三方目录 目录
-set(Third_Party_Dir "${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party")
+set(Third_Party_Dir "${CMAKE_CURRENT_SOURCE_DIR}/Third_Party")
 
 # 借用三方的 .cmake
 include(${Third_Party_Dir}/LwIP/src/Filelists.cmake)
