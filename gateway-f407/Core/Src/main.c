@@ -25,12 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "FreeRTOS.h"
-#include "task.h"
-#include "lwip.h"
-#include "lwip/api.h"
-#include "lwip/ip_addr.h"
-#include "ethernetif.h"
+#include "app_init.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,34 +57,6 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-static void TestTask(void *arg) {
-    (void)arg;
-    for (;;) {
-        /* 用你的 LED 或 UART 证明任务在跑 */
-        HAL_GPIO_TogglePin(LED_Green_GPIO_Port, LED_Green_Pin);
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-}
-
-static void EthInputTask(void *arg) {
-    (void)arg;
-    for (;;) {
-        ethernetif_input(&gnetif);
-        vTaskDelay(pdMS_TO_TICKS(1));
-    }
-}
-
-static void InitTask(void *arg)
-{
-    (void)arg;
-
-    MX_LWIP_Init();
-
-    xTaskCreate(EthInputTask, "ethin", 512, NULL, 2, NULL);
-
-    vTaskDelete(NULL);
-}
 
 /* USER CODE END 0 */
 
@@ -126,16 +93,12 @@ int main(void)
   MX_CAN1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  App_Init();
+  
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  xTaskCreate(TestTask, "test", 256, NULL, 2, NULL);
-  xTaskCreate(InitTask,  "init", 1024, NULL, 2, NULL);
-
-  vTaskStartScheduler();
-  
   while (1)
   {
     /* USER CODE END WHILE */

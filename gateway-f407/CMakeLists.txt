@@ -76,6 +76,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/LWIP/Target/ethernetif.c
     ${CMAKE_SOURCE_DIR}/LWIP/Target/sys_arch.c
     ${CMAKE_SOURCE_DIR}/Drivers/BSP/Components/lan8742/lan8742.c
+    ${CMAKE_SOURCE_DIR}/bsp/can_port.c
+    ${CMAKE_SOURCE_DIR}/app/app_init.c
+    ${CMAKE_SOURCE_DIR}/app/app_tasks.c
+    ${CMAKE_SOURCE_DIR}/gateway/command_manager.c
+    ${CMAKE_SOURCE_DIR}/gateway/device_model.c
+    ${CMAKE_SOURCE_DIR}/gateway/gateway.c
+    ${CMAKE_SOURCE_DIR}/protocol/can_app.c
 )
 
 # 三方部分编入源码
@@ -108,6 +115,11 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${Third_Party_Dir}/LwIP/system/arch
     # LAN8742
     ${CMAKE_SOURCE_DIR}/Drivers/BSP/Components/lan8742
+    # 其他部分
+    ${CMAKE_SOURCE_DIR}/bsp
+    ${CMAKE_SOURCE_DIR}/app
+    ${CMAKE_SOURCE_DIR}/gateway
+    ${CMAKE_SOURCE_DIR}/protocol
 )
 
 # Add project symbols (macros)
