@@ -35,21 +35,3 @@ void InitTask(void *arg) {
     xTaskCreate(EthInputTask, "ethin", 512, NULL, 2, NULL);
     vTaskDelete(NULL);
 }
-
-void Can_Send_Command_Test(void *arg) {
-    (void)arg;
-    can_frame_t frame = {0};
-    while (1) {
-        Can_App_Fan_Code(3000, 1, &frame);
-        Can_Port_send(&frame);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
-can_frame_t frame1 = {0};
-void Can_Recv_Command_Test(void *arg) {
-    (void)arg;
-    while (1) {
-        Can_Port_recv(&frame1, UINT32_MAX);
-    }
-}

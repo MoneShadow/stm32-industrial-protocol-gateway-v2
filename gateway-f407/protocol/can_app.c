@@ -19,7 +19,7 @@ can_app_result_t Can_App_Fan_Code(uint16_t rpm, uint8_t seq, can_frame_t *frame)
     frame->data[0] = 1;
     frame->data[1] = (uint8_t)(rpm & 0xFF);             // 转速低位
     frame->data[2] = (uint8_t)((rpm >> 8) & 0xFF);      // 转速高位
-    frame->data[3] = sqe;                               // 命令序号
+    frame->data[3] = seq;                               // 命令序号
     frame->data[4] = 0;
     frame->data[5] = 0;
     frame->data[6] = 0;
@@ -37,7 +37,7 @@ can_app_result_t Can_App_LED_Code(uint8_t state, uint8_t seq, can_frame_t *frame
     frame->data[0] = 2;
     frame->data[1] = state;  // LED状态
     frame->data[2] = 0;
-    frame->data[3] = sqe;    // 命令序号
+    frame->data[3] = seq;    // 命令序号
     frame->data[4] = 0;
     frame->data[5] = 0;
     frame->data[6] = 0;
