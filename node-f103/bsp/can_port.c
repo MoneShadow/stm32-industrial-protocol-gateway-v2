@@ -31,7 +31,7 @@ static can_port_result_t Can_Port_Start(void) {
     if (HAL_CAN_ActivateNotification( &hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK) { // 开中断
         return CAN_PORT_ERROR;
     }
-    return 0;
+    return CAN_PORT_OK;
 }
 
 can_frame_t frame = {0};

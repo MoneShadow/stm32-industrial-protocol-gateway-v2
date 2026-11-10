@@ -26,7 +26,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "can_port.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -112,14 +112,48 @@ int main(void)
   {
     Error_Handler();
   }
+
+  if (Can_Port_Init() != CAN_PORT_OK) {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    uint32_t mv_pa1 = (g_adc_raw[0] * 3300U + 2047U) / 4095U;
-    uint32_t mv_pa2 = (g_adc_raw[1] * 3300U + 2047U) / 4095U;
+    // uint32_t mv_pa1 = (g_adc_raw[0] * 3300U + 2047U) / 4095U;
+    // uint32_t mv_pa2 = (g_adc_raw[1] * 3300U + 2047U) / 4095U;
+
+    /* 测试f407端接收 0x101状态 0x201心跳 0x401应答 */
+    // can_frame_t test_frame1 = {0};
+    // test_frame1.id = 0x101;
+    // test_frame1.dlc = 8;
+    // test_frame1.flags = 0;
+    // for (uint8_t i = 0; i < 8; i++) {
+    //   test_frame1.data[i] = 1;
+    // }
+    // Can_Port_send(&test_frame1);
+
+    // can_frame_t test_frame2 = {0};
+    // test_frame2.id = 0x201;
+    // test_frame2.dlc = 2;
+    // test_frame2.flags = 0;
+    // for (uint8_t i = 0; i < 2; i++) {
+    //   test_frame2.data[i] = 2;
+    // }
+    // Can_Port_send(&test_frame2);
+
+    can_frame_t test_frame3 = {0};
+    test_frame3.id = 0x401;
+    test_frame3.dlc = 3;
+    test_frame3.flags = 0;
+    for (uint8_t i = 0; i < 3; i++) {
+      test_frame3.data[i] = 4;
+    }
+    Can_Port_send(&test_frame3);
+    
+    HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
