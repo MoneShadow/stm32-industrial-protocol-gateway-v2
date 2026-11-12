@@ -1,118 +1,101 @@
 #!/usr/bin/env python3
-"""Program a CMake-built firmware image with OpenOCD."""
+"""
 
-from __future__ import annotations
+设计目标：同一块板子换项目时不需要改脚本。
+  · 固件位置自动在 build/<preset>/ 下查找，不写死文件名
+  · 探针、芯片型号集中在本文件的常量里，换硬件只改一处
+  · 失败时复位探针并重试一次（廉价 DAPLink 偶尔在烧录中卡死）
+
+用法:
+  python3 .scripts/flash.py                  # DAPLink + Debug，最常用
+  python3 .scripts/flash.py --probe stlink   # 临时换回 ST-LINK
+  python3 .scripts/flash.py --speed 500      # 调整 SWD 时钟
+"""
 
 import argparse
-import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIGS = ("interface/stlink.cfg", "target/stm32f4x.cfg")
-IMAGE_SUFFIXES = {".elf", ".hex", ".bin"}
+# 目标芯片配置。换芯片（比如以后上 F411/F429）只改这一行。
+TARGET = "target/stm32f4x.cfg"
 
+# 构建产物可能的后缀，优先用 .elf（OpenOCD 能直接解析地址）
+IMAGE_SUFFIXES = (".elf", ".hex", ".bin")
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "-p",
-        "--preset",
-        default=os.environ.get("CMAKE_BUILD_PRESET", "Debug"),
-        help="Build preset whose output should be searched (default: %(default)s).",
-    )
-    parser.add_argument(
-        "--build-dir",
-        type=Path,
-        help="Directory to search; overrides the preset-based default.",
-    )
-    parser.add_argument(
-        "-i",
-        "--image",
-        type=Path,
-        help="Firmware image to program explicitly.",
-    )
-    parser.add_argument(
-        "-f",
-        "--config",
-        action="append",
-        dest="configs",
-        help="OpenOCD config file; can be specified more than once.",
-    )
-    parser.add_argument(
-        "--openocd",
-        default=os.environ.get("OPENOCD", "openocd"),
-        help="OpenOCD executable (default: %(default)s).",
-    )
-    return parser.parse_args()
-
-
-def project_path(path: Path) -> Path:
-    return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
+# 探针名 → (OpenOCD 接口配置, USB VID:PID)
+# VID:PID 只用于失败后复位探针，换探针时用 lsusb 查一下即可。
+PROBES = {
+    "daplink": ("interface/cmsis-dap.cfg", "c251:f001"),
+    "stlink": ("interface/stlink.cfg", "0483:3748"),
+}
 
 
 def find_image(build_dir: Path) -> Path:
+    """在构建目录里找固件文件，优先 .elf。"""
     if not build_dir.is_dir():
-        raise ValueError(f"Build directory not found: {build_dir}")
+        sys.exit(f"构建目录不存在: {build_dir}（先跑 build.py）")
 
-    images = sorted(
-        path
-        for path in build_dir.rglob("*")
-        if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
-    )
+    images = [p for p in build_dir.rglob("*") if p.suffix.lower() in IMAGE_SUFFIXES]
+    elves = [p for p in images if p.suffix.lower() == ".elf"]
+    found = sorted(elves or images)
 
-    # Prefer ELF because it normally contains symbols and is the natural CMake
-    # output. HEX/BIN are fallback formats for projects that do not emit ELF.
-    elf_images = [path for path in images if path.suffix.lower() == ".elf"]
-    candidates = elf_images or images
-
-    if len(candidates) == 1:
-        return candidates[0]
-    if not candidates:
-        raise ValueError(f"No firmware image found under: {build_dir}")
-
-    names = "\n".join(f"  - {path.relative_to(build_dir)}" for path in candidates)
-    raise ValueError(
-        f"Multiple firmware images found:\n{names}\nUse --image to choose one."
-    )
+    if not found:
+        sys.exit(f"在 {build_dir} 下没找到固件")
+    if len(found) > 1:
+        names = "\n".join(f"  {p}" for p in found)
+        sys.exit(f"找到多个固件，请用 -i 指定一个:\n{names}")
+    return found[0]
 
 
 def main() -> int:
-    args = parse_args()
-    build_dir = (
-        project_path(args.build_dir)
-        if args.build_dir
-        else PROJECT_ROOT / "build" / args.preset
-    )
+    parser = argparse.ArgumentParser(description="烧录固件到目标板")
+    parser.add_argument("-p", "--preset", default="Debug", help="构建目录名")
+    parser.add_argument("--probe", choices=PROBES, default="daplink", help="调试探针")
+    # 100 kHz 足够稳；这颗 DAPLink 走 HID，时钟调高也快不了
+    parser.add_argument("--speed", type=int, default=100, help="SWD 时钟 kHz")
+    parser.add_argument("-i", "--image", type=Path, help="手动指定固件文件")
+    parser.add_argument("--no-retry", action="store_true", help="失败后不重试")
+    args = parser.parse_args()
 
-    try:
-        image = project_path(args.image) if args.image else find_image(build_dir)
-    except ValueError as error:
-        print(error, file=sys.stderr)
-        return 1
-
+    # 没手动指定就自动找，这是"换项目不改脚本"的关键
+    image = args.image or find_image(ROOT / "build" / args.preset)
     if not image.is_file():
-        print(f"Firmware image not found: {image}", file=sys.stderr)
-        return 1
+        sys.exit(f"固件不存在: {image}")
 
-    command = [args.openocd]
-    for config in args.configs or DEFAULT_CONFIGS:
-        command.extend(["-f", config])
-    command.extend(["-c", f'program "{image.as_posix()}" verify reset exit'])
+    interface, usb_id = PROBES[args.probe]
 
-    print(f"Firmware: {image}")
-    print(">", " ".join(command))
-    try:
-        result = subprocess.run(command, cwd=PROJECT_ROOT).returncode
-    except FileNotFoundError:
-        print(f"OpenOCD executable not found: {args.openocd}", file=sys.stderr)
-        return 127
+    # 参数顺序不能乱：接口配置必须最先，后面的 transport/speed 才生效
+    cmd = [
+        "openocd",
+        "-f", interface,                              # 1. 探针驱动
+        "-c", "transport select swd",                 # 2. SWD（不是 JTAG）
+        "-c", f"adapter speed {args.speed}",          # 3. SWD 时钟
+        "-f", TARGET,                                 # 4. 目标芯片
+        "-c", f'program "{image}" verify reset exit', # 5. 烧录 + 校验 + 复位
+    ]
 
-    if result == 0:
-        print("Flash succeeded")
-    return result
+    print(f"固件: {image}")
+    for attempt in (1, 2):
+        if attempt > 1:
+            print("重试...")
+        print(">", " ".join(cmd))
+        if subprocess.run(cmd).returncode == 0:
+            print("烧录成功")
+            return 0
+        if attempt == 2 or args.no_retry:
+            break
+        # 探针烧录中卡死后，USB 端口复位通常能救回来，省得动手拔插
+        print("失败，复位探针后重试")
+        if shutil.which("usbreset"):
+            subprocess.run(["usbreset", usb_id], check=False)
+        time.sleep(2)
+
+    sys.exit("烧录失败：检查板子供电 / 探针 / SWD 接线（SWDIO=PA13, SWCLK=PA14, GND）")
 
 
 if __name__ == "__main__":
