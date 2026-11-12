@@ -84,6 +84,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/gateway/device_model.c
     ${CMAKE_SOURCE_DIR}/gateway/gateway.c
     ${CMAKE_SOURCE_DIR}/protocol/can_app.c
+    ${CMAKE_SOURCE_DIR}/protocol/modbus_tcp.c
+    ${CMAKE_SOURCE_DIR}/protocol/modbus_pdu.c
 )
 
 # 三方部分编入源码
