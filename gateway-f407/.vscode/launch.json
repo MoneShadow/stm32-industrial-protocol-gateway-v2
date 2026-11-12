@@ -12,7 +12,7 @@
             "servertype": "openocd",
             "device": "STM32F407VG",
             "svdFile": "${workspaceFolder}/STM32F407.svd",
-            "executable": "${workspaceFolder}/build/Debug/ETH_Demo01.elf",
+            "executable": "${workspaceFolder}/build/Debug/gateway-f407.elf",
             "gdbPath": "arm-none-eabi-gdb",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
