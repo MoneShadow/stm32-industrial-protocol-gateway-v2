@@ -77,6 +77,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/LWIP/Target/sys_arch.c
     ${CMAKE_SOURCE_DIR}/Drivers/BSP/Components/lan8742/lan8742.c
     ${CMAKE_SOURCE_DIR}/bsp/can_port.c
+    ${CMAKE_SOURCE_DIR}/bsp/net_port.c
     ${CMAKE_SOURCE_DIR}/app/app_init.c
     ${CMAKE_SOURCE_DIR}/app/app_tasks.c
     ${CMAKE_SOURCE_DIR}/gateway/command_manager.c

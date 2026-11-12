@@ -8,6 +8,7 @@
 
 #include "can_port.h"
 #include "can_app.h"
+#include "net_port.h"
 
 void TestTask(void *arg) {
     (void)arg;
@@ -32,6 +33,10 @@ void InitTask(void *arg) {
     if (Can_Port_Init() != CAN_PORT_OK) {
         Error_Handler();
     }
+    if (Net_Port_Init(502) != NET_PORT_OK) {
+        Error_Handler();
+    }
+    xTaskCreate(NetServerTask, "net", 768, NULL, 2, NULL);
     xTaskCreate(EthInputTask, "ethin", 512, NULL, 2, NULL);
     vTaskDelete(NULL);
 }
