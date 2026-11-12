@@ -50,7 +50,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
         if (header.RTR == CAN_RTR_REMOTE) {
             frame.flags |= CAN_FRAME_FLAG_RTR;
         }
-        HAL_GPIO_TogglePin(TEST_LED_GPIO_Port, TEST_LED_Pin);
+        // HAL_GPIO_TogglePin(TEST_LED_GPIO_Port, TEST_LED_Pin);
     }
 }
 
