@@ -15,7 +15,7 @@
             "executable": "${workspaceFolder}/build/Debug/ETH_Demo01.elf",
             "gdbPath": "arm-none-eabi-gdb",
             "configFiles": [
-                "interface/stlink.cfg",
+                "interface/cmsis-dap.cfg",
                 "target/stm32f4x.cfg"
             ],
             "runToEntryPoint": "main",
