@@ -16,6 +16,7 @@
 
 #define NET_PORT_SELECT_TIMEOUT_MS  10
 #define NET_PORT_RETRY_DELAY_MS     1000
+#define NET_PORT_EVENT_TIMEOUT_MS   100
 
 /* 待发送数据类 */
 typedef struct {
@@ -26,6 +27,7 @@ typedef struct {
 /* 客户端类 */
 typedef struct {
     int fd;
+    uint32_t conn_id;
     QueueHandle_t tx_queue;
     uint8_t tx_buf[NET_PORT_TX_CHUNK];
     uint16_t tx_len;
@@ -35,9 +37,10 @@ typedef struct {
 static bool s_initialized;                              // 初始化标志
 static bool s_server_started;                           // 服务开启标志
 static uint16_t s_port;                                 // 指定的端口号
-static QueueHandle_t s_rx_queue;                        // 接收缓冲队列
+static QueueHandle_t s_event_queue;                     // 连接/数据/断开事件队列
 static SemaphoreHandle_t s_clients_mutex;               // 互斥锁
 static net_client_t s_clients[NET_PORT_MAX_CLIENTS];    // 客户端对象数组
+static uint32_t s_next_conn_id;
 
 /* 
     设置非阻塞 socket 
@@ -69,10 +72,19 @@ static void Net_ClientInitAll(void)
     }
 }
 
+/* 事件推送函数 */
+static bool Net_PostEvent(const net_port_event_t *event, TickType_t timeout) {
+    if (s_event_queue == NULL || event == NULL) {
+        return false;
+    }
+    return xQueueSend(s_event_queue, event, timeout) == pdPASS;
+}
+
 /* 关闭指定客户端(根据客户端数组索引) */
 static void Net_ClientCloseByIndex(int index) {
     net_client_t *client = &s_clients[index];
     int fd;
+    uint32_t conn_id;
     QueueHandle_t tx_queue;
 
     if (client->fd < 0) {
@@ -83,6 +95,7 @@ static void Net_ClientCloseByIndex(int index) {
     xSemaphoreTake(s_clients_mutex, portMAX_DELAY);
 
     fd = client->fd;
+    conn_id = client->conn_id;
     tx_queue = client->tx_queue;
     Net_ClientReset(client);    // 删除客户端
 
@@ -95,6 +108,18 @@ static void Net_ClientCloseByIndex(int index) {
     if (tx_queue != NULL) {
         vQueueDelete(tx_queue); // 删除该客户端的tx接收缓冲队列
     }
+
+    if (fd >= 0) {
+        /* 发送客户端断开事件 */
+        net_port_event_t event = {0};
+        event.type = NET_PORT_EVENT_DISCONNECTED;
+        event.fd = fd;
+        event.conn_id = conn_id;
+        /* 生命周期事件：不允许丢 */
+        if (!Net_PostEvent(&event, portMAX_DELAY)) {
+            /* 理论上不会失败，失败了只能记录/复位 */
+        }
+    }
 }
 
 /* 删除所有客户端 */
@@ -104,9 +129,10 @@ static void Net_ClientCloseAll(void) {
     }
 }
 
-/* 初始化Client */
+/* 添加客户端 */
 static int Net_ClientAdd(int fd) {
     int index = -1; // flag
+    uint32_t new_conn_id;
     QueueHandle_t tx_queue;
 
     if (fd < 0 || fd >= FD_SETSIZE) {
@@ -119,6 +145,8 @@ static int Net_ClientAdd(int fd) {
         return -1;
     }
 
+    /* 分配 conn_id */
+    new_conn_id = s_next_conn_id++;
     /* 加互斥锁 */
     xSemaphoreTake(s_clients_mutex, portMAX_DELAY);
 
@@ -126,6 +154,7 @@ static int Net_ClientAdd(int fd) {
     for (int i = 0; i < NET_PORT_MAX_CLIENTS; i++) {
         if (s_clients[i].fd < 0) {
             s_clients[i].fd = fd;
+            s_clients[i].conn_id = new_conn_id;
             s_clients[i].tx_queue = tx_queue;
             s_clients[i].tx_len = 0;
             s_clients[i].tx_off = 0;
@@ -139,6 +168,26 @@ static int Net_ClientAdd(int fd) {
 
     if (index < 0) {
         /* 添加客户端失败 */
+        vQueueDelete(tx_queue);
+        return -1;
+    }
+
+    /* 先通知上层连接建立，再允许该客户端的数据事件入队。 */
+    net_port_event_t event = {0};
+    event.type = NET_PORT_EVENT_CONNECTED;
+    event.fd = fd;
+    event.conn_id = new_conn_id;
+
+    /* 这边的这个CONNECTED事件发送成功后 会立刻唤醒 Gateway 创建 session、初始化 modbus_tcp_conn_t */
+    if (!Net_PostEvent(&event, portMAX_DELAY)) {
+        /*
+        * 连接事件没能入队，调用方还没有拿到这个客户端。
+        * 这里只移除客户端槽位，不关闭 fd；由 accept 循环统一关闭，
+        * 避免 fd 被双重 close。
+        */
+        xSemaphoreTake(s_clients_mutex, portMAX_DELAY);
+        Net_ClientReset(&s_clients[index]);
+        xSemaphoreGive(s_clients_mutex);
         vQueueDelete(tx_queue);
         return -1;
     }
@@ -257,17 +306,17 @@ net_port_result_t Net_Port_Init(uint16_t port) {
         return NET_PORT_OK;
     }
 
-    /* 创建接收缓冲队列 */
-    s_rx_queue = xQueueCreate(NET_PORT_RX_QUEUE_LEN, sizeof(net_port_rx_t));
-    if (s_rx_queue == NULL) {
+    /* 创建连接/数据/断开事件队列 */
+    s_event_queue = xQueueCreate(NET_PORT_EVENT_QUEUE_LEN, sizeof(net_port_event_t));
+    if (s_event_queue == NULL) {
         return NET_PORT_ERROR;
     }
 
     /* 创建互斥锁 */
     s_clients_mutex = xSemaphoreCreateMutex();
     if (s_clients_mutex == NULL) {
-        vQueueDelete(s_rx_queue);
-        s_rx_queue = NULL;
+        vQueueDelete(s_event_queue);
+        s_event_queue = NULL;
         return NET_PORT_ERROR;
     }
 
@@ -279,8 +328,8 @@ net_port_result_t Net_Port_Init(uint16_t port) {
     return NET_PORT_OK;
 }
 
-/* 对外暴露的接收API */
-net_port_result_t Net_Port_Recv(net_port_rx_t *event, uint32_t timeout_ms) {
+/* 对外暴露的事件API */
+net_port_result_t Net_Port_GetEvent(net_port_event_t *event, uint32_t timeout_ms) {
     TickType_t ticks;
 
     if (!s_initialized || event == NULL) {
@@ -293,8 +342,7 @@ net_port_result_t Net_Port_Recv(net_port_rx_t *event, uint32_t timeout_ms) {
         ticks = pdMS_TO_TICKS(timeout_ms);
     }
 
-    /* 从接收缓冲队列中取出数据 */
-    if (xQueueReceive(s_rx_queue, event, ticks) != pdPASS) {
+    if (xQueueReceive(s_event_queue, event, ticks) != pdPASS) {
         return NET_PORT_TIMEOUT;
     }
 
@@ -302,7 +350,7 @@ net_port_result_t Net_Port_Recv(net_port_rx_t *event, uint32_t timeout_ms) {
 }
 
 /* 对外暴露的发送API */
-net_port_result_t Net_Port_Send(int fd, const uint8_t *data, uint16_t len) {
+net_port_result_t Net_Port_Send(int fd, uint32_t conn_id, const uint8_t *data, uint16_t len) {
     net_port_tx_t tx;
     net_port_result_t result = NET_PORT_ERROR;
 
@@ -315,7 +363,7 @@ net_port_result_t Net_Port_Send(int fd, const uint8_t *data, uint16_t len) {
 
     /* 遍历客户端数组 找到需要发送数据的那个客户端 */
     for (int i = 0; i < NET_PORT_MAX_CLIENTS; i++) {
-        if (s_clients[i].fd == fd && s_clients[i].tx_queue != NULL) {
+        if (s_clients[i].fd == fd && s_clients[i].conn_id == conn_id && s_clients[i].tx_queue != NULL) {
             tx.len = len;
             memcpy(tx.data, data, len);
 
@@ -367,7 +415,10 @@ void NetServerTask(void *arg) {
     if (!s_initialized) {
         /* 调用方必须先完成 lwIP 初始化和 Net_Port_Init()。 */
         vTaskDelay(pdMS_TO_TICKS(NET_PORT_RETRY_DELAY_MS));
-        return;
+        if (!s_initialized) {
+            /* 等待之后还是失败的话 终止程序 */
+            while (1);
+        }
     }
 
     /* 防止重复创建任务 */
@@ -466,6 +517,7 @@ void NetServerTask(void *arg) {
             for (int i = 0; i < NET_PORT_MAX_CLIENTS; i++) {
                 net_client_t *client = &s_clients[i];
                 int fd = client->fd;
+                uint32_t conn_id = client->conn_id;
 
                 if (fd < 0) {
                     continue;   // 客户端不存在
@@ -484,14 +536,16 @@ void NetServerTask(void *arg) {
 
                         if (received > 0) {
                             /* 收到数据 */
-                            net_port_rx_t event;
+                            net_port_event_t event = {0};
 
+                            event.type = NET_PORT_EVENT_DATA;
                             event.fd = fd;
+                            event.conn_id = conn_id;
                             event.len = (uint16_t)received;
                             memcpy(event.data, buf, received);
 
-                            /* 将接收到数据放入接收数据队列缓冲区 */
-                            if (xQueueSend(s_rx_queue, &event, 0) != pdPASS) {
+                            /* 将数据事件放入事件队列 */
+                            if (!Net_PostEvent(&event, 0)) {
                                 /* 消费端跟不上：断开该客户端，避免字节流错位。 */
                                 Net_ClientCloseByIndex(i);
                                 break;
