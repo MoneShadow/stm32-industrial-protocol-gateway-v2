@@ -144,14 +144,14 @@ int main(void)
     // }
     // Can_Port_send(&test_frame2);
 
-    can_frame_t test_frame3 = {0};
-    test_frame3.id = 0x401;
-    test_frame3.dlc = 3;
-    test_frame3.flags = 0;
-    for (uint8_t i = 0; i < 3; i++) {
-      test_frame3.data[i] = 4;
-    }
-    Can_Port_send(&test_frame3);
+    // can_frame_t test_frame3 = {0};
+    // test_frame3.id = 0x401;
+    // test_frame3.dlc = 3;
+    // test_frame3.flags = 0;
+    // for (uint8_t i = 0; i < 3; i++) {
+    //   test_frame3.data[i] = 4;
+    // }
+    // Can_Port_send(&test_frame3);
     
     HAL_Delay(1000);
     /* USER CODE END WHILE */
