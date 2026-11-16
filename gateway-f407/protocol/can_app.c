@@ -45,6 +45,35 @@ can_app_result_t Can_App_LED_Code(uint8_t state, uint8_t seq, can_frame_t *frame
     return CAN_APP_OK;
 }
 
+/* 
+    读寄存器编码稍微有一点复杂
+    需要实现地址加数量实现读取4个状态
+    modbus端前四个地址就对应四个状态
+    我们可以根据地址加数量给can的前四个数据帧置1来表示需要读取哪些状态
+    data[0] DEVICE_REG_TEMPERATURE      0x0000U
+    data[1] DEVICE_REG_LIGHT            0x0001U
+    data[2] DEVICE_REG_FAN_RPM          0x0002U
+    data[3] DEVICE_REG_LED_STATE        0x0003U
+
+    额外加 命令状态 在线状态 版本状态
+    data[4] DEVICE_REG_CMD_RESULT       0x0004U
+    data[5] DEVICE_REG_ONLINE           0x0005U
+    data[6] DEVICE_REG_PROTOCOL_VERSION 0x0006U
+*/
+can_app_result_t Can_App_FetchState_Code(uint16_t address, uint16_t quantity, uint8_t seq, can_frame_t *frame) {
+    /* 这里的seq只是形式 因为命令不会下发给下位机 而是直接从device中读取缓存状态 */
+    if (frame == NULL || quantity > 7 || address > 7 || address + quantity > 7) {   // uint16 与 uint8 之间是可以直接比较的(向上靠齐)
+        return CAN_APP_INVALID_ARG;
+    }
+    frame->id = 0x501;
+    frame->dlc = quantity;
+    frame->flags = 0;
+    for (uint16_t i = 0; i < quantity; i++, address++) {
+        frame->data[(address & 0xFF)] = 1;
+    }
+    return CAN_APP_OK;
+}
+
 /* 先搞清楚0x101状态解码函数的边界 依旧是只负责解码 不负责更新模型 */
 /* 解码命令 0x101 状态命令 */
 can_app_result_t Can_App_States_Deco(const can_frame_t *frame, device_state_t *status) {
