@@ -1,14 +1,13 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "lwip.h"
-#include "lwip/api.h"
-#include "lwip/ip_addr.h"
 #include "ethernetif.h"
 #include "app_tasks.h"
 
 #include "can_port.h"
-#include "can_app.h"
 #include "net_port.h"
+#include "gateway.h"
+#include "command_manager.h"
 
 void TestTask(void *arg) {
     (void)arg;
@@ -36,6 +35,11 @@ void InitTask(void *arg) {
     if (Net_Port_Init(502) != NET_PORT_OK) {
         Error_Handler();
     }
+    Gateway_Init();
+    xTaskCreate(Gateway_ModbusRxTask, "modbus", 768, NULL, 2, NULL);
+    xTaskCreate(Gateway_CanRxTask, "canrx", 512, NULL, 2, NULL);
+    xTaskCreate(GatewayTask, "gw", 768, NULL, 2, NULL);
+    xTaskCreate(CommandTask, "cmd", 768, NULL, 2, NULL);
     xTaskCreate(NetServerTask, "net", 768, NULL, 2, NULL);
     xTaskCreate(EthInputTask, "ethin", 512, NULL, 2, NULL);
     vTaskDelete(NULL);
