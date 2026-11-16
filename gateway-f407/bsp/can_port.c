@@ -62,7 +62,7 @@ static can_port_result_t Can_Port_Start(void) {
 }
 
 /* 重申，该文件只原样接收并返回can帧，不做二次处理 */
-static uint32_t RxFIFOFULLED;
+static volatile uint32_t RxFIFOFULLED;
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     CAN_RxHeaderTypeDef header = {0};
     can_frame_t frame = {0};
