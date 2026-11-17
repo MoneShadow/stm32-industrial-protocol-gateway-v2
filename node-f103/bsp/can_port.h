@@ -1,8 +1,10 @@
 #ifndef CAN_PORT_H
 #define CAN_PORT_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "can_frame.h"
+#include "ring_buffer.h"
 
 typedef enum {
     CAN_PORT_OK = 0,
@@ -11,6 +13,8 @@ typedef enum {
     CAN_PORT_TIMEOUT,
     CAN_PORT_ERROR
 } can_port_result_t;
+
+extern ring_buffer_t can_port_Rx_Ring;
 
 can_port_result_t Can_Port_Init(void);
 can_port_result_t Can_Port_send(const can_frame_t *frame);

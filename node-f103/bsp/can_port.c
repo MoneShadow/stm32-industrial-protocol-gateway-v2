@@ -2,6 +2,16 @@
 #include "can.h"
 #include "can_frame.h"
 #include "can_port.h"
+#include "ring_buffer.h"
+
+#define CAN_PORT_RX_BUF_LEN 128U /* 必须是 2 的幂 */
+
+_Static_assert((CAN_PORT_RX_BUF_LEN & (CAN_PORT_RX_BUF_LEN - 1U)) == 0U,
+               "CAN_PORT_RX_BUF_LEN must be a power of two");
+
+/* CAN 接收队列：中断里 Push，协议层 Pop */
+static can_frame_t can_port_Rx_Buffer[CAN_PORT_RX_BUF_LEN];
+ring_buffer_t can_port_Rx_Ring;
 
 static void CAN_Port_Filter_Init(void) {
     CAN_FilterTypeDef f = {0};
@@ -34,10 +44,11 @@ static can_port_result_t Can_Port_Start(void) {
     return CAN_PORT_OK;
 }
 
-can_frame_t frame = {0};
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     CAN_RxHeaderTypeDef header = {0};
-    while (HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0) > 0) {
+    can_frame_t frame = {0};
+
+    while (HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0) > 0U) {
         if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &header, frame.data) != HAL_OK) {  // 取接收到的can帧
             break;
         }
@@ -50,11 +61,17 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
         if (header.RTR == CAN_RTR_REMOTE) {
             frame.flags |= CAN_FRAME_FLAG_RTR;
         }
-        // HAL_GPIO_TogglePin(TEST_LED_GPIO_Port, TEST_LED_Pin);
+        /* 队列满时丢弃新帧；中断上下文中不做阻塞等待 */
+        (void)RingBuffer_Push(&can_port_Rx_Ring, &frame);
+        HAL_GPIO_TogglePin(TEST_LED_GPIO_Port, TEST_LED_Pin);
     }
 }
 
 can_port_result_t Can_Port_Init(void) {
+    if (!RingBuffer_Init(&can_port_Rx_Ring, can_port_Rx_Buffer, (uint16_t)CAN_PORT_RX_BUF_LEN, (uint16_t)sizeof(can_port_Rx_Buffer[0]))) {
+        return CAN_PORT_ERROR;
+    }
+
     CAN_Port_Filter_Init();
     if (Can_Port_Start() != CAN_PORT_OK) {
         return CAN_PORT_ERROR;

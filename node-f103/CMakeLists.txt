@@ -46,6 +46,10 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_SOURCE_DIR}/bsp/can_port.c
+    ${CMAKE_SOURCE_DIR}/bsp/ring_buffer.c
+    ${CMAKE_SOURCE_DIR}/protocol/can_app.c
+    ${CMAKE_SOURCE_DIR}/app/app.c
+    ${CMAKE_SOURCE_DIR}/device/device.c
 )
 
 # Add include paths
@@ -53,6 +57,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     ${CMAKE_SOURCE_DIR}/bsp
     ${CMAKE_SOURCE_DIR}/protocol
+    ${CMAKE_SOURCE_DIR}/app
+    ${CMAKE_SOURCE_DIR}/device
 )
 
 # Add project symbols (macros)
