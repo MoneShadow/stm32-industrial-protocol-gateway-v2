@@ -6,3 +6,4 @@
 *.bin
 *.map
 *.su
+gateway-f407/docs/devlog/*
