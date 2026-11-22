@@ -7,3 +7,4 @@
 *.map
 *.su
 gateway-f407/docs/devlog/*
+host-computer/__pycache__/*
