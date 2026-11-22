@@ -8,3 +8,5 @@
 *.su
 gateway-f407/docs/devlog/*
 host-computer/__pycache__/*
+host-computer/dist/*
+host-computer/main.spec
